@@ -104,6 +104,9 @@ def reformat_and_copy(image_path,
     # channel. The processing is just easier, and all my images are grayscale
     # for radiology anyway. Can be done with color images too...for another day.
     # Also, it's much faster to resize the image before you do this operation.
+    # Note: the actual inception format requires three channels, but it's easy to
+    # read in RGB from grayscale, and it saves a bit of space to have one channel.
+    # I could go either way on it though.
     if len(image.shape) > 2:
         temp_row = []
         temp = []
