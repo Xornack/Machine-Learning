@@ -5,7 +5,7 @@ These functions takes all the image files within a folder and the subfolders,
 resizes/reformats them, and saves them into a destination folder. This is useful
 if, for example, a standard CNN accepts matrices of a certain size (n x n), but
 your images are of a different size. For example, inception v3 accepts 
-299 x 299 images, but for many of my projects, the image size is 2000 x 1000, 
+299 x 299 images, but for many of my projects, the image size is 2000 x 2000, 
 1024 x 1024, 512 x 512...etc. It saves time during testing out algorithms
 if you don't have to reformat the images every time you restart the kernel.
 
