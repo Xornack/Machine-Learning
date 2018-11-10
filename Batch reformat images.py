@@ -167,17 +167,3 @@ for i in list_subfolder_image_paths_selective("E:/folder", ['label1']):
     
 I've used these functions to reformat or just sort images in a similar way.
 '''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
