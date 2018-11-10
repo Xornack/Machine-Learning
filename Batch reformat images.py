@@ -82,7 +82,7 @@ def count_files_in_subfolders_selective(folder, selective_list = []):
 '''
 This code takes those path lists from before and does a batch reformat of 
 some kind. This is just useful starter code. Projects often require their own 
-standardizations, normalizations, and transformatins.
+standardizations, normalizations, and transformations.
 '''
 # Format file with some input parameters. Saves it to a new folder.
 # x and y are the desired dimensions of the output file.
