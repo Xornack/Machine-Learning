@@ -95,18 +95,3 @@ for i in range(len(unaltered_images)):
     for k in range(5):
         print(image_guess[k][0], image_guess[k][1])
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
