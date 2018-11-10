@@ -45,7 +45,7 @@ def convert_to_inception_format(image):
 
 # Get a list of images in your folder
 def list_image_paths(folder_path, # input the folder containing images.
-                     image_formats = ['png', 'jpg', 'jpeg', 'dcm']):
+                     image_formats = ['png', 'jpg', 'jpeg']):
     return [folder_path + '/' + i for i in os.listdir(folder_path) 
             if i.split('.')[-1] in image_formats]
 
