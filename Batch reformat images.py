@@ -95,7 +95,7 @@ def reformat_and_copy(image_path,
     
     # Read in pixel data and file name.
     image = plt.imread(image_path)
-    file_name = "reform_incept_v3_" + image_path.split('/')[-1]
+    file_name = "reform_incept_v3_" + image_path.split('/')[-1].split('.')[-2]
         
     # Resize image.
     image = sk_transform.resize(image, (x, y))
