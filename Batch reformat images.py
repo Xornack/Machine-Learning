@@ -124,7 +124,7 @@ def reformat_and_copy(image_path,
     # Copy the file to disc. If the output_path doesn't exist, it makes one.
     if not os.path.exists(output_path):       
             os.makedirs(output_path)
-    plt.imsave(output_path + file_name, image, cmap = 'gray')
+    plt.imsave(output_path + file_name + ".png", image)
     
     return None
     
@@ -146,7 +146,7 @@ def reformat_and_copy_DICOM(file_path, x, y, output_path):
     # Copy the file to disc. If the output_path doesn't exits, it makes one.
     if not os.path.exists(output_path):          
             os.makedirs(output_path)
-    plt.imsave(output_path + file_name + ".png", image, cmap = 'gray')
+    plt.imsave(output_path + "/" + file_name + ".png", image)
     
     return None
 
