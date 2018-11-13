@@ -87,7 +87,7 @@ standardizations, normalizations, and transformations.
 # Format file with some input parameters. Saves it to a new folder.
 # x and y are the desired dimensions of the output file.
 # This code reformats for inception v3.
-# Saves the image as whatever format it originally was.
+# Saves the image usually as .png.
 def reformat_and_copy(image_path, 
                       x, # = 299 for inception v3
                       y, 
