@@ -1,0 +1,162 @@
+"""
+Created on Sat Dec  1 17:55:05 2018
+Data augmentation. This code provides a few data augmentation techniques for 
+radiology images. Slight rotation, crop and blur are the  relevant options. 
+For my radiograph feeding tube placement project, I only needed a 
+few augmented images, so that the data set size for correct and incorrect
+position would be equal. I only used slight rotation for that reason.
+
+The "augmented" images will be saved to a hard drive and then turned into a 
+feature vector after moving through a feature extractor CNN (inception v3).
+@author: Matthew Harwood
+"""
+import random
+from scipy import ndarray
+import skimage as sk
+import matplotlib.pyplot as plt
+import os
+import numpy as np
+from scipy import ndimage
+import pandas
+
+'''
+The first functions are just useful for folders and subfolders. I use them a 
+lot, and they could (probably should) be imported from my Useful Functions 
+python script.
+'''
+# Lists the image paths within a subfolder.
+def list_image_paths(folder_path, # input the folder containing images.
+                     image_formats = ['png', 'jpg', 'jpeg', 'dcm']):
+    return [folder_path + '/' + i for i in os.listdir(folder_path) 
+            if i.split('.')[-1] in image_formats]
+ 
+# Lists all the subfolder paths to the images.    
+def list_subfolder_image_paths(folder):
+    subfolder_paths = [folder + '/' + i for i in os.listdir(folder)]
+    files = [list_image_paths(i) for i in subfolder_paths]
+    return [i for j in files for i in j]
+
+# Selective list of subfolder paths.
+def list_subfolder_image_paths_selective(folder, selective_list = []):
+    subfolder_paths = [folder + '/' + i for i in os.listdir(folder) \
+                       if i in selective_list]
+    files = [list_image_paths(i) for i in subfolder_paths]
+    return [i for j in files for i in j]
+
+# Show an image in grayscale. Only really needed to see the outputs.
+def show(image):
+    plt.imshow(image, cmap = 'gray')
+    plt.show()
+    
+# Function to load an image. This assumes they are saved as .png files, whice
+# has four channels. Inception v3 needs three channels.
+def load_image(image_path):
+    image = plt.imread(image_path)
+    if len(image.shape) > 2:
+        image = image[:,:,0]
+    return image
+
+# Function to load all the sample images. This accepts a list of image paths.
+def load_images(image_list):
+    return np.array([load_image(i) for i in image_list])
+
+# Rotate image a random amount between -20 and 20 degrees.
+# The chance of getting 0 is very low, so I ignored it. You could
+# exclude middle values easily, but which ones? This just works and is simple.
+def random_rotation(image_array: ndarray):
+    random_degree = random.uniform(-20, 20)
+    return sk.transform.rotate(image_array, random_degree)
+
+# Randomly crop images to different sizes but between 70 and 100 percent
+# of the original.
+def crop(image):
+    x, y = image.shape
+    zoom1 = random.uniform(7, 10)
+    zoom2 = random.uniform(7, 10)
+    zoom3 = random.uniform(7, 10)
+    zoom4 = random.uniform(7, 10)
+    return image[int(x // zoom1): - int(x // zoom2),
+                 int(y // zoom3): int(- y // zoom4)]
+
+# Make a blurry image. For radiology I avoided this altogether, because
+# the resolution is the information. And you already have to resize the image
+# a lot to make it fit into the available CNN models. 
+
+#Also, for most tasks, the position within an image matters, so flip is not 
+# even included.
+def blur(image):
+    sigma = random.uniform(2, 3)
+    return ndimage.gaussian_filter(image, sigma=sigma)
+
+'''
+# Code to write 75 of the images, randomly selected from the training data,
+# for validation.    
+train_paths = list_subfolder_image_paths_selective("E:/Feeding_Tubes", 
+                                                   ['1st', '2nd', '3rd', '4rth',
+                                                    'antrum', 'fundus', 
+                                                    'jejunum','stomach'])
+        
+ # Only use this the first time. Every other time read the values back in.       
+validation_paths = random.sample(train_paths, 75)
+
+with open("E:/validation.csv", "w") as file:
+    writer = csv.writer(file, lineterminator = '\n')
+    for row in validation_paths:
+        writer.writerow([row])
+'''
+
+# To read validations back in. This is an example from my feeding tube machine
+# learning project.
+validation_paths = pandas.read_csv("E:/validation.csv", header = None).values
+validation_paths = [i[0] for i in validation_paths]
+
+
+pos_paths = list_subfolder_image_paths_selective("E:/Feeding_Tubes",
+                                                 ['3rd', '4rth', 'jejunum', 
+                                                  'Augment_positive'])
+pos_paths = [i for i in pos_paths if i not in validation_paths]
+neg_paths = list_subfolder_image_paths_selective("E:/Feeding_Tubes", 
+                                                   ['1st', '2nd', 
+                                                    'antrum', 'fundus', 
+                                                    'stomach',
+                                                    'Augment_negative'])
+neg_paths = [i for i in neg_paths if i not in validation_paths]
+
+# I only wanted to augment up to the number of negative images, so the data
+# set sizes are equal.
+def augment_up_to_n(image_paths, output_path, n, crop = False):
+    count = len(image_paths)
+    while count < n:
+        if crop == False:
+            roll = 1
+        else:
+            roll = random.randint(1, 3)
+        
+        chosen_path = random.sample(image_paths, 1)[0]
+        print(count, chosen_path)
+        file_name = chosen_path.split('/')[-1].split('.')[-2]
+        old_image = load_image(chosen_path)
+        
+        if roll == 1:
+            new_image = random_rotation(old_image)
+    
+        if roll == 2:
+            new_image = crop(old_image)        
+            
+        if roll == 3:
+            new_image = crop(old_image)
+            new_image = random_rotation(new_image)
+            
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+            
+        output_full_path = output_path + "/" + file_name + "_%i" \
+                           %random.randint(1, 1000) + ".png" 
+        plt.imsave(output_full_path,
+                   new_image, 
+                   cmap = 'gray')
+        
+        count += 1
+    return None
+
+augment_up_to_n(pos_paths, "E:/Feeding_Tubes/Augment_positive", 965)
