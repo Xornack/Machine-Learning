@@ -1,0 +1,286 @@
+'''
+This code trains a model to predict whether a feeding tube is in 
+the correct location or not on an abdominal radiograph.
+
+The image data comes from St. Joseph's Hospital and Medical Center in 
+Phoenix, AZ, and the images were downloaded and labeled by the researchers 
+(including myself) after IRB approval.
+'''
+
+from tensorflow.contrib.slim.nets import inception
+import tensorflow.contrib.slim as slim
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import random
+import pandas
+from skimage import transform as sk_transform
+from functools import partial
+
+# Lists paths to images.
+def list_paths(folder_path,
+              formats = ['png', 'jpg']):
+    return [folder_path + '/' + i for i in os.listdir(folder_path) 
+            if i.split('.')[-1] in formats]
+    
+# Selective list of subfolder paths.
+def list_subfolder_paths_selective(folder, selective_list = []):
+    subfolder_paths = [folder + '/' + i for i in os.listdir(folder) \
+                       if i in selective_list]
+    files = [list_paths(i) for i in subfolder_paths]
+    return [i for j in files for i in j]
+
+# Randomly shuffle the sample list. Accepts a list or array. Returns either
+# a list if you gave a list or an numpy array if you gave it an array.
+def shuffle(x):
+    if type(x) == list:
+        random.shuffle(x)
+    elif type(x) == np.ndarray:
+        np.random.shuffle(x)
+    return x
+    
+# Function to load an image. This assumes they are saved as .png files, which
+# has four channels. Inception v3 needs three channels.
+def load_image(image_path):
+    image = plt.imread(image_path)
+    return image[:,:,:3] # returns a n x n x 3 image as a numpy array.
+
+# Function to load all the sample images. This accepts a list of image paths.
+def load_images(image_list):
+    return np.array([load_image(i) for i in image_list])
+
+# Reformat for inception v3. x and y have to by 299 when this is called.
+def reformat(image, x, y):
+       
+    # Resize image.
+    image = sk_transform.resize(image, (x, y))
+    
+    # Before I do anything, I need to make sure the image is grayscale and one
+    # channel. This accepts both .png and .jpg. Each type of image needs it's own
+    # reformatting and has to be extensively tested. These aren't color images and
+    # when saved at png or jpg, the default is to make all the channels the same.
+    # I tested this out thoroughly and is different for every CNN model.
+    if len(image.shape) > 2:
+        image = image[:,:,0]
+    
+    return np.stack((image,)*3, axis=-1) # re-channel image to RGB.
+
+# Show an image in grayscale.
+def show(image):
+    plt.imshow(image, cmap = 'gray')
+    plt.show()
+     
+# Load images into memory. I previously saved a random subset of image paths for 
+# validation, which is the 'validation.csv' below.
+
+validation_paths = pandas.read_csv("E:/validation.csv", header = None).values
+validation_paths = [i[0] for i in validation_paths]
+reformatted_validation_paths = ["E:/reformatted_for_inception/" + 
+                                i.split('/')[-2] + "/" +
+                                i.split('/')[-1].split('.')[-2].split('_')[0] +
+                                "_inception_v3.png" for i in validation_paths]
+    
+p_paths = list_subfolder_paths_selective('E:/reformatted_for_inception',
+                                         ['3rd', '4rth', 'jejunum',
+                                          'Augment_positive'
+                                          ])
+p_paths = [j for j in p_paths if j not in reformatted_validation_paths] 
+
+n_paths = list_subfolder_paths_selective('E:/reformatted_for_inception',
+                                         ['1st', '2nd', 'antrum',
+                                          'fundus', 'stomach'])
+n_paths = [k for k in n_paths if k not in reformatted_validation_paths]
+
+pval_paths = [i for i in reformatted_validation_paths 
+              if i.split('/')[-2] in  ['3rd', '4rth', 'jejunum']]
+nval_paths = [j for j in reformatted_validation_paths 
+              if j.split('/')[-2] in  ['1st', '2nd', 'antrum', 
+                                        'fundus', 'stomach']]
+
+none_paths = list_paths('E:/reformatted_for_inception/none')
+uncertain_paths = list_paths('E:/reformatted_for_inception/uncertain')
+
+p_images = load_images(p_paths)
+n_images = load_images(n_paths)        
+pval_images = load_images(pval_paths)
+nval_images = load_images(nval_paths)
+none_images = load_images(none_paths)
+uncertain_images = load_images(uncertain_paths)
+
+print("Loaded images into memory.")
+
+# Label images.
+p_with_labels = [(i, 1) for i in p_images]
+n_with_labels = [(i, 0) for i in n_images]
+pval_with_labels = [(i, 1) for i in pval_images]
+nval_with_labels = [(i, 0) for i in nval_images]
+none_with_labels = [(i, 2) for i in none_images]
+uncertain_with_labels = [(i, 3) for i in uncertain_images]
+print("Labeled images.")
+
+training_set = p_with_labels + n_with_labels + none_with_labels + uncertain_with_labels
+validation_set = pval_with_labels + nval_with_labels
+
+val_images = [i[0] for i in validation_set]
+val_labels = [j[1] for j in validation_set]
+
+'''
+This code should set up a graph that takes the output of inception v3 and
+feed that into a NN.
+Note the original images have to be transformed into feature vectors of length 
+2048.
+'''
+
+tf.reset_default_graph()
+
+X = tf.placeholder(tf.float32, shape = [None, 299, 299, 3], name = "X")
+y = tf.placeholder(tf.int32, shape = [None])
+training = tf.placeholder_with_default(False, shape = (), name = 'training')
+
+# This code specifies which portion of the code will be ouptut of inception v3.
+with slim.arg_scope(inception.inception_v3_arg_scope()):
+    logits, end_points = inception.inception_v3(inputs = X,
+                                                num_classes = 1001,
+                                                is_training = False)
+
+# Need the saver to load incpeption v3.
+inception_saver = tf.train.Saver()
+
+# The prelogits endpoint is a vector of shape [?, 1, 1, 2048].
+# The tf.squeeze function removes the 2nd and 3rd dimension as below.
+# This prelogits layer is the one we want for feeding into our net, not the
+# "Predictions" layers as in my Inception v3 model.py code.
+prelogits = tf.squeeze(end_points["PreLogits"], axis=[1, 2])    
+
+n_outputs = 4 
+learning_rate = 0.00001
+dropout_rate = 0.6
+
+# Simplify dropout code using 'partial,' which just fills in the repetetive 
+# code.
+my_dropout = partial(tf.layers.dropout, 
+                     rate = dropout_rate, 
+                     training = training)
+
+# Dropout code.
+
+with tf.name_scope("DNN"):
+
+    hidden1 = tf.layers.dense(prelogits, 150,
+                              activation = tf.nn.elu,
+                              name = "hidden1")
+    hidden1_drop = my_dropout(hidden1)
+    
+    hidden2 = tf.layers.dense(hidden1_drop, 150,
+                              activation = tf.nn.elu,
+                              name = "hidden2")
+    hidden2_drop = my_dropout(hidden2)
+    
+    hidden3 = tf.layers.dense(hidden2_drop, 150,
+                              activation = tf.nn.elu,
+                              name = "hidden3")
+    hidden3_drop = my_dropout(hidden3)
+
+with tf.name_scope("new_output_layer"):
+    new_logits = tf.layers.dense(hidden3_drop, n_outputs, name = "new_logits")
+    Y_prob = tf.nn.softmax(new_logits, name = "Y_prob")
+
+with tf.name_scope("train"):
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits = new_logits, 
+                                                              labels = y)
+    loss = tf.reduce_mean(xentropy)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    # You have to feed the new layer into the optimizer function, since
+    # it's the only one being trained.
+    training_op = optimizer.minimize(loss)
+
+with tf.name_scope("eval"):
+    correct = tf.nn.in_top_k(new_logits, y, 1)
+    accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+
+# Note this saver will work for the DNN values.
+with tf.name_scope("init_and_save"):
+    init = tf.global_variables_initializer()
+    saver = tf.train.Saver(max_to_keep = 20)
+
+steps = 5000
+mini_batch_size = 10
+
+
+
+with tf.Session() as sess: 
+
+    sess.run(init)
+    inception_saver.restore(sess, "E:/checkpoints/inception_v3.ckpt")
+
+    count = 0
+    iters = [] # List of counts, which is needed to plot accuracy.
+    train_accuracy = [] # Will use for plotting.
+    val_accuracy = [] # Will use for plotting.
+
+    for step in range(steps):
+        
+        len(training_set)
+        
+        sample = random.sample(training_set, mini_batch_size)
+        X_mini_batch = [i[0] for i in sample]
+        y_mini_batch = [j[1] for j in sample]
+        
+        if step == 0:
+            # Calculate accuracy for the last mini-batch.
+            acc_train = accuracy.eval(feed_dict={training: False,
+                                                 X: X_mini_batch, 
+                                                 y: y_mini_batch})
+            train_accuracy.append(acc_train)
+    
+            # Calculate cross validation.
+            acc_val = accuracy.eval(feed_dict={training: False,
+                                              X: val_images, 
+                                              y: val_labels})
+            val_accuracy.append(acc_val)
+            
+            iters.append(count)
+            count += 1
+                 
+        # All of the above so you can do this one step, to make a 
+        # single training step.
+        sess.run(training_op,
+                 feed_dict={training: True,
+                            X: X_mini_batch,
+                            y: y_mini_batch})
+   
+        # Calculate accuracy for the last mini-batch.
+        acc_train = accuracy.eval(feed_dict={training: False,
+                                             X: X_mini_batch, 
+                                             y: y_mini_batch})
+           
+        train_accuracy.append(acc_train)
+
+        # Calculate validation.
+        acc_val = accuracy.eval(feed_dict={training: False,
+                                          X: val_images, 
+                                          y: val_labels})
+        
+        val_accuracy.append(acc_val)
+        iters.append(count)
+        count += 1
+
+        print(step, "Validation accuracy: ", acc_val)          
+        if (step + 1)%1000 == 0:
+
+            plt.plot(iters, train_accuracy, label = "training accuracy")
+            plt.plot(iters, val_accuracy, label = "validation accuracy")
+            plt.ylim(0, 1.1)
+            plt.xlim(0, steps)
+            plt.legend(bbox_to_anchor=(0, 1, 1, 0), 
+                       loc = 3, ncol = 2, 
+                       mode = "expand", 
+                       borderaxespad = 0.)
+            plt.show()
+        
+        if acc_val >= 0.84: # Why 0.84? I just didn't want to save every single iteration, which
+                            # slows down the training a lot. 
+                            # Test accuracy will be all that matters for reporting.
+            saver.save(sess, "E:/saved_models/%i_model" %int(acc_val*100),
+                       global_step = step + 1)
